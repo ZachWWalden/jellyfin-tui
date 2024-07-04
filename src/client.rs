@@ -27,7 +27,7 @@ pub struct Credentials {
 impl Client {
     /// Creates a new client with the given base URL
     /// If the configuration file does not exist, it will be created with stdin input
-    /// 
+    ///
     pub async fn new() -> Self {
 
         let config_dir = match config_dir() {
@@ -39,7 +39,7 @@ impl Client {
         };
 
         let config_file = config_dir.join("jellyfin-tui").join("config.yaml");
-        
+
         if !config_file.exists() {
             let mut server = String::new();
             let mut username = String::new();
@@ -179,7 +179,7 @@ impl Client {
     }
 
     /// Produces a list of artists, called by the main function before initializing the app
-    /// 
+    ///
     pub async fn artists(&self) -> Result<Vec<Artist>, reqwest::Error> {
         let url = format!("{}/Artists", self.base_url);
         println!("[OK] Streaming from jellyfin at: {}", url);
@@ -191,9 +191,9 @@ impl Client {
             .header("Content-Type", "text/json")
             .query(&[
                 ("SortBy", "SortName"),
-                ("SortOrder", "Ascending"), 
-                ("Recursive", "true"), 
-                ("Fields", "SortName"), 
+                ("SortOrder", "Ascending"),
+                ("Recursive", "true"),
+                ("Fields", "SortName"),
                 ("ImageTypeLimit", "-1")
             ])
             .query(&[("StartIndex", "0")])
@@ -217,8 +217,45 @@ impl Client {
         Ok(artists.items)
     }
 
+    /// Produces a list of albums, called by the main function when the user chooses the albums
+    /// view
+    ///
+    pub async fn albums(&self) -> Result<Vec<MusicAlbum>, reqwest::Error> {
+        let url = format!("{}/Items", self.base_url);
+
+        let response: Result<reqwest::Response, reqwest::Error> = self.http_client
+            .get(url)
+            .header("X-MediaBrowser-Token", self.access_token.to_string())
+            .header("x-emby-authorization", "MediaBrowser Client=\"jellyfin-tui\", Device=\"jellyfin-tui\", DeviceId=\"None\", Version=\"10.4.3\"")
+            .header("Content-Type", "text/json")
+            .query(&[
+                ("SortBy", "SortName"),
+                ("SortOrder", "Ascending"),
+                ("IncludeItemTypes", "MusicAlbum"),
+                ("Recursive", "true"),
+            ])
+            .query(&[("StartIndex", "0")])
+            .send()
+            .await;
+
+        let albums = match response {
+            Ok(json) => {
+                let albums: Albums = json.json().await.unwrap_or_else(|_| Albums {
+                    items: vec![],
+                    start_index: 0,
+                    total_record_count: 0,
+                });
+                albums
+            },
+            Err(_) => {
+                return Ok(vec![]);
+            }
+        };
+
+        Ok(albums.items)
+    }
     /// Produces a list of songs by an artist sorted by album and index
-    /// 
+    ///
     pub async fn discography(&self, id: &str) -> Result<Discography, reqwest::Error> {
         let url = format!("{}/Users/{}/Items", self.base_url, self.user_id);
 
@@ -230,7 +267,7 @@ impl Client {
             .query(&[
                 ("SortBy", "Album,IndexNumber"),
                 ("SortOrder", "Ascending"),
-                ("Recursive", "true"), 
+                ("Recursive", "true"),
                 ("IncludeItemTypes", "Audio"),
                 ("Fields", "Genres, DateCreated, MediaSources, ParentId"),
                 ("StartIndex", "0"),
@@ -293,7 +330,7 @@ impl Client {
     }
 
     /// Returns media info for a song
-    /// 
+    ///
     pub async fn metadata(&self, song_id: String) -> Result<MediaStream, Box<dyn Error>> {
         let url = format!("{}/Users/{}/Items/{}", self.base_url, self.user_id, song_id);
 
@@ -311,7 +348,7 @@ impl Client {
         // check if response is ok
         let song: Value = response.json().await?;
         let media_sources: Vec<MediaSource> = serde_json::from_value(song["MediaSources"].clone())?;
-        
+
         for m in media_sources {
             for ms in m.media_streams {
                 if ms.type_ == "Audio" {
@@ -333,7 +370,7 @@ impl Client {
     }
 
     /// Downloads cover art for an album and saves it as cover.*, filename is returned
-    /// 
+    ///
     pub async fn download_cover_art(&self, album_id: String) -> Result<String, Box<dyn Error>> {
         let url = format!("{}/Items/{}/Images/Primary?fillHeight=512&fillWidth=512&quality=96&tag=be2a8642e97e2151ef0580fc72f3505a", self.base_url, album_id);
         let response = self.http_client
@@ -377,7 +414,7 @@ impl Client {
         url
     }
     /// Sends a 'playing' event to the server
-    /// 
+    ///
     pub async fn playing(&self, song_id: String) -> Result<(), reqwest::Error> {
         let url = format!("{}/Sessions/Playing", self.base_url);
         let _response = self.http_client
@@ -397,7 +434,7 @@ impl Client {
     }
 
     /// Sends a 'stopped' event to the server. Needed for scrobbling
-    /// 
+    ///
     pub async fn stopped(&self, song_id: String, position_ticks: u64) -> Result<(), reqwest::Error> {
         let url = format!("{}/Sessions/Playing/Stopped", self.base_url);
         let _response = self.http_client
@@ -514,6 +551,41 @@ pub struct Artist {
     location_type: String,
     #[serde(rename = "MediaType", default)]
     media_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Albums {
+    #[serde(rename = "Items")]
+    items: Vec<MusicAlbum>,
+    #[serde(rename = "StartIndex")]
+    start_index: u64,
+    #[serde(rename = "TotalRecordCount")]
+    total_record_count: u64,
+}
+//Add support for a Music Album view
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MusicAlbum {
+    #[serde(rename = "Name")]
+    pub name: String,
+    #[serde(rename = "Id")]
+    pub id: String,
+    #[serde(rename = "RunTimeTicks", default)]
+    run_time_ticks: u64,
+    #[serde(rename = "ProductionYear")]
+    production_year: u64,
+    #[serde(rename = "Type", default)]
+    type_: String,
+    #[serde(rename = "UserData")]
+    user_data: UserData,
+    #[serde(rename = "ArtistItems")]
+    artist_items: serde_json::Value,
+    #[serde(rename = "AlbumArtist")]
+    album_artist: String,
+    #[serde(rename = "ImageTags", default)]
+    image_tags: serde_json::Value,
+    #[serde(rename = "ImageBlurHashes", default)]
+    image_blur_hashes: serde_json::Value,
+
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
