@@ -254,6 +254,43 @@ impl Client {
 
         Ok(albums.items)
     }
+    /// Produces a list of songs contained within an album, called by the main function when the user chooses an album from the albums
+    /// view
+    ///
+    pub async fn album_songs(&self, album_id: &str) -> Result<Vec<MusicAlbumSong>, reqwest::Error> {
+        let url = format!("{}/Items", self.base_url);
+
+        let response: Result<reqwest::Response, reqwest::Error> = self.http_client
+            .get(url)
+            .header("X-MediaBrowser-Token", self.access_token.to_string())
+            .header("x-emby-authorization", "MediaBrowser Client=\"jellyfin-tui\", Device=\"jellyfin-tui\", DeviceId=\"None\", Version=\"10.4.3\"")
+            .header("Content-Type", "text/json")
+            .query(&[
+                ("SortBy", "IndexNumber"),
+                ("SortOrder", "Ascending"),
+                ("IncludeItemTypes", "Audio"),
+                ("ParentId", album_id),
+            ])
+            .query(&[("StartIndex", "0")])
+            .send()
+            .await;
+
+        let songs = match response {
+            Ok(json) => {
+                let albums: MusicAlbumSongs = json.json().await.unwrap_or_else(|_| MusicAlbumSongs {
+                    items: vec![],
+                    start_index: 0,
+                    total_record_count: 0,
+                });
+                albums
+            },
+            Err(_) => {
+                return Ok(vec![]);
+            }
+        };
+
+        Ok(songs.items)
+    }
     /// Produces a list of songs by an artist sorted by album and index
     ///
     pub async fn discography(&self, id: &str) -> Result<Discography, reqwest::Error> {
@@ -588,6 +625,42 @@ pub struct MusicAlbum {
 
 }
 
+//Song returned by calling Items endpoint with ParentId=AlbumId
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MusicAlbumSong {
+    #[serde(rename = "Name")]
+    name: String,
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "HasLyrics")]
+    has_lyrics: bool,
+    #[serde(rename = "Container")]
+    container: String,
+    #[serde(rename = "RunTimeTicks", default)]
+    run_time_ticks: u64,
+    #[serde(rename = "ProductionYear")]
+    production_year: u64,
+    #[serde(rename = "IndexNumber")]
+    index_number: u64,
+    #[serde(rename = "Type")]
+    _type: String,
+    #[serde(rename = "UserData")]
+    user_data: UserData,
+    #[serde(rename = "AlbumId")]
+    album_id: String,
+    #[serde(rename = "AlbumArtist")]
+    album_artist: String,
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MusicAlbumSongs {
+    #[serde(rename = "Items")]
+    items: Vec<MusicAlbumSong>,
+    #[serde(rename = "StartIndex")]
+    start_index: u64,
+    #[serde(rename = "TotalRecordCount")]
+    total_record_count: u64,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserData {
     #[serde(rename = "PlaybackPositionTicks")]
@@ -792,7 +865,8 @@ pub struct Discography {
 pub struct DiscographyAlbum {
     songs: Vec<DiscographySong>,
 }
-
+//TODO this struct is entirely redundant, remove any uses of it and replace ut simply with UserData
+//struct
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DiscographySongUserData {
     #[serde(rename = "PlaybackPositionTicks")]
