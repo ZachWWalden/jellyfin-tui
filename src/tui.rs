@@ -28,7 +28,15 @@ use crossterm::event::KeyCode;
 
 #[derive(Debug)]
 pub enum ActiveSection {
+    MyMedia,
+    Movies,
+    Shows,
+    Show,
+    Season,
+    Episodes,
+    Genres,
     Artists,
+    Albums,
     Tracks,
     Queue,
 }
@@ -70,20 +78,20 @@ pub struct App {
     paused: bool,
     active_section: ActiveSection, // current active section (Artists, Tracks, Queue)
     last_section: ActiveSection, // last active section
-    
+
     // ratatui list indexes
     selected_artist: ListState,
     selected_track: ListState,
     selected_queue_item: ListState,
-    
+
     client: Option<Client>, // jellyfin http client
-    
+
     // mpv is run in a separate thread, this is the handle
     mpv_thread: Option<thread::JoinHandle<()>>,
     mpv_state: Arc<Mutex<MpvState>>, // shared mutex for controlling mpv
-    
+
     // every second, we get the playback state from the mpv thread
-    sender: Sender<MpvPlaybackState>, 
+    sender: Sender<MpvPlaybackState>,
     receiver: Receiver<MpvPlaybackState>,
     current_playback_state: MpvPlaybackState,
     old_percentage: f64,
@@ -235,7 +243,7 @@ impl App {
                     self.scrobble_this = (song_id.clone(), (self.current_playback_state.duration * self.current_playback_state.percentage * 100000.0) as u64);
 
                     let client = self.client.as_ref().unwrap();
-                    
+
                     let runit = report_progress(
                         client.base_url.clone(), client.access_token.clone(), ProgressReport {
                         volume_level: 100,
@@ -463,7 +471,7 @@ impl App {
                 .borders(Borders::ALL)
                 .border_style(style::Color::White),
         };
-        
+
         let track_highlight_style = match self.active_section {
             ActiveSection::Tracks => Style::default()
                 .bg(Color::White)
@@ -567,7 +575,7 @@ impl App {
         } else {
             self.cover_art = None;
         }
-        
+
 
         let layout = Layout::vertical(vec![
             Constraint::Percentage(55),
@@ -678,7 +686,7 @@ impl App {
                     total_seconds as u32 / 60,
                     total_seconds as u32 % 60
                 );
-                
+
                 frame.render_widget(
                     Paragraph::new(duration).centered().block(
                         Block::bordered()
@@ -760,7 +768,7 @@ impl App {
             Constraint::Percentage((100 - percent_y) / 2),
           ])
           .split(r);
-      
+
         Layout::default()
           .direction(Direction::Horizontal)
           .constraints([
@@ -769,7 +777,7 @@ impl App {
             Constraint::Percentage((100 - percent_x) / 2),
           ])
           .split(popup_layout[1])[1]
-      }      
+      }
     async fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Char('q') => self.exit(),
