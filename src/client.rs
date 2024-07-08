@@ -56,12 +56,10 @@ impl Client {
                 while server.is_empty() || !server.contains("http") {
                     println!("host: ");
                     io::stdin().read_line(&mut server).unwrap();
-                    if server.is_empty() {
-                        println!("[!!] Host cannot be empty");
-                    } else if !server.contains("http") {
+                    if !server.contains("http") {
                         println!("[!!] Host must be a valid URL including http or https");
+			server = "".to_string();
                     }
-                    server = "".to_string();
                 }
                 println!("username: ");
                 io::stdin().read_line(&mut username).expect("Failed to read username");
